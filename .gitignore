@@ -1,3 +1,6 @@
+# --- 隠すやつ ---
+.env
+credentials.json
 # --- Python環境 ---
 venv/
 __pycache__/
