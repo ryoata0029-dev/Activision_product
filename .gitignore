@@ -1,1 +1,21 @@
-.env
+# --- Python環境 ---
+venv/
+__pycache__/
+*.py[cod]
+
+# --- データベース (SQLiteなど) ---
+data/
+*.db
+
+# --- Mac固有のゴミ ---
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- Windows固有のゴミ ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- VS Codeの設定 (個人設定が衝突しないように) ---
+.vscode/
