@@ -1,11 +1,17 @@
 import sqlite3
 import json
+import os
 
 DB_PATH = "data/tech0_search.db"
 
 
+# -----------------------------
+# DB 初期化
+# -----------------------------
 def init_db():
     """pages テーブルを作成する（存在しない場合のみ）"""
+    os.makedirs("data", exist_ok=True)
+
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
@@ -23,8 +29,11 @@ def init_db():
     conn.close()
 
 
+# -----------------------------
+# 新規登録 / 上書き
+# -----------------------------
 def insert_page(url, title, keywords, summary, crawled_at):
-    """新しいページ情報をデータベースに追加する"""
+    """新しいページ情報をデータベースに追加する（存在すれば上書き）"""
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
@@ -46,6 +55,9 @@ def insert_page(url, title, keywords, summary, crawled_at):
     conn.close()
 
 
+# -----------------------------
+# URL で 1 件取得
+# -----------------------------
 def get_page_by_url(url):
     """URL を指定してページ情報を1件取得する"""
     conn = sqlite3.connect(DB_PATH)
@@ -71,6 +83,9 @@ def get_page_by_url(url):
     }
 
 
+# -----------------------------
+# 更新
+# -----------------------------
 def update_page(url, title, keywords, summary, crawled_at):
     """ページ情報を更新する"""
     conn = sqlite3.connect(DB_PATH)
@@ -95,6 +110,23 @@ def update_page(url, title, keywords, summary, crawled_at):
     conn.close()
 
 
+# -----------------------------
+# 削除
+# -----------------------------
+def delete_page(url):
+    """URL を指定してページを削除する"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM pages WHERE url = ?", (url,))
+
+    conn.commit()
+    conn.close()
+
+
+# -----------------------------
+# 全件取得（一覧表示用）
+# -----------------------------
 def get_all_pages():
     """全ページを取得して検索エンジンに渡せる形にする"""
     conn = sqlite3.connect(DB_PATH)
@@ -115,3 +147,14 @@ def get_all_pages():
         })
 
     return pages
+
+
+# -----------------------------
+# JSON 互換の load/save（app.py 互換）
+# -----------------------------
+def load_pages():
+    return get_all_pages()
+
+def save_pages(pages):
+    """SQLite では不要だが、app.py 互換のために残す"""
+    pass
