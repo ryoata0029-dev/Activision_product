@@ -2,14 +2,24 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import json
+import re
 
 load_dotenv()
-
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+def extract_json(text: str):
+    """
+    GPT の返答から JSON 部分だけを安全に抽出する
+    """
+    match = re.search(r"\{[\s\S]*\}", text)
+    if match:
+        return match.group(0)
+    return None
 
 def analyze_text(text: str):
-    """テキストを解析して title / keywords / summary を返す"""
+    """
+    GPT を使って title / keywords / summary を生成する（壊れない版）
+    """
 
     prompt = f"""
 以下のテキストを読み、必ず次の3つを JSON 形式で返してください。
@@ -18,7 +28,7 @@ def analyze_text(text: str):
 - keywords: 重要キーワード（5〜10個）
 - summary: 200文字以内の要約
 
-出力は JSON のみ。
+出力は JSON のみ。文章は書かない。
 
 --- テキスト ---
 {text}
@@ -27,28 +37,30 @@ def analyze_text(text: str):
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "JSON のみで返してください。"},
+            {"role": "system", "content": "出力は JSON のみで返してください。"},
             {"role": "user", "content": prompt}
         ],
         temperature=0.2
     )
 
-    result_text = response.choices[0].message.content
+    raw = response.choices[0].message.content
 
+    # JSON 部分だけ抽出
+    json_text = extract_json(raw)
+
+    if not json_text:
+        return {"error": "JSON not found in response"}
+
+    # JSON パース
     try:
-        result_json = json.loads(result_text)
+        result = json.loads(json_text)
     except json.JSONDecodeError:
-        return {
-            "title": None,
-            "keywords": None,
-            "summary": None,
-            "error": "JSON decode failed"
-        }
+        return {"error": "JSON decode failed", "raw": raw}
 
-    # keywords が文字列の場合はリストに変換
-    if isinstance(result_json.get("keywords"), str):
-        result_json["keywords"] = [
-            k.strip() for k in result_json["keywords"].split(",") if k.strip()
+    # keywords が文字列で返る場合に備えて補正
+    if isinstance(result.get("keywords"), str):
+        result["keywords"] = [
+            k.strip() for k in result["keywords"].split(",") if k.strip()
         ]
 
-    return result_json
+    return result
