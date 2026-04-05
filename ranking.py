@@ -1,12 +1,6 @@
-"""
-ranking.py — Tech0 Search v1.0
-TF-IDF ベースの検索エンジン（SearchEngine クラス）を提供する。
-"""
-
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import List
-import math
 from datetime import datetime
 
 
@@ -14,143 +8,95 @@ class SearchEngine:
     """TF-IDFベースの検索エンジン"""
 
     def __init__(self):
-        # TF-IDF ベクトライザーを初期化する
         self.vectorizer = TfidfVectorizer(
             max_features=5000,
             analyzer='char',
-            ngram_range=(2, 3),  # 2-3文字の塊で判定するよう修正
+            ngram_range=(2, 4),  # 改善
             min_df=1,
-            max_df=0.95,
-            sublinear_tf=True    # TF の対数スケーリング
+            max_df=0.98,
+            sublinear_tf=True
         )
-        self.tfidf_matrix = None  # インデックス（後で構築）
-        self.pages = []           # 元のページデータを保持
-        self.is_fitted = False    # インデックスが構築済みかのフラグ
+        self.tfidf_matrix = None
+        self.pages = []
+        self.is_fitted = False
 
     def build_index(self, pages: list):
-        """
-        全ページの TF-IDF インデックスを構築する。
-
-        Args:
-            pages: ページ情報の辞書リスト
-        """
         if not pages:
             return
 
         self.pages = pages
 
-        # 各ページの「検索対象テキスト」を組み立てる
-        # タイトル・説明・キーワードに重みを付けるため、文字列を繰り返す
         corpus = []
         for p in pages:
-            # keywords がカンマ区切り文字列の場合はリストに変換する
-            kw = p.get("keywords", "") or ""
+            kw = p.get("keywords", [])
             if isinstance(kw, str):
-                kw_list = [k.strip() for k in kw.split(",") if k.strip()]
-            else:
-                kw_list = kw
+                kw = [k.strip() for k in kw.split(",")]
 
-            # 重みづけを実施。タイトルは 3倍、説明は 2倍、キーワードは 2倍の重みを付ける
             text = " ".join([
-                (p.get("title", "") + " ") * 3,        # タイトルは3倍
-                (p.get("summary", "") + " ") * 2,  # 説明は2倍
-                (" ".join(kw_list) + " ") * 2,          # キーワードは2倍
+                (p.get("title", "") + " ") * 3,
+                (p.get("summary", "") + " ") * 2,
+                (" ".join(kw) + " ") * 2,
             ])
             corpus.append(text)
 
-        # TF-IDF マトリックスを構築する
         self.tfidf_matrix = self.vectorizer.fit_transform(corpus)
         self.is_fitted = True
 
     def search(self, query: str, top_n: int = 20) -> list:
-        """
-        TF-IDF ベースの検索を実行する。
-
-        Args:
-            query : 検索クエリ
-            top_n : 返す結果の最大数
-
-        Returns:
-            スコア付きの検索結果リスト
-        """
         if not self.is_fitted or not query.strip():
             return []
 
-        # クエリをベクトル化してコサイン類似度を計算する
         query_vec = self.vectorizer.transform([query])
         similarities = cosine_similarity(query_vec, self.tfidf_matrix)[0]
 
-        # 閾値以上のページだけ結果に含める
         results = []
         for idx, base_score in enumerate(similarities):
-            if base_score > 0.01:
+            if base_score > 0.05:  # 改善
                 page = self.pages[idx].copy()
-
-                # 追加スコアリングで最終スコアを計算する
                 final_score = self._calculate_final_score(page, base_score, query)
 
-                # スコアをパーセント表示用に変換する
                 page["relevance_score"] = round(float(final_score) * 100, 1)
                 page["base_score"] = round(float(base_score) * 100, 1)
                 results.append(page)
 
-        # スコアの高い順に並べて top_n 件を返す
         results.sort(key=lambda x: x["relevance_score"], reverse=True)
         return results[:top_n]
 
     def _calculate_final_score(self, page: dict, base_score: float, query: str) -> float:
-        """
-        複数の要素を組み合わせて最終スコアを計算する（内部メソッド）。
-
-        Args:
-            page: ページ情報
-            base_score: TF-IDFベーススコア
-            query: 検索クエリ
-
-        Returns:
-            最終スコア
-        """
         score = base_score
         query_lower = query.lower()
 
-        # 1. タイトルマッチボーナス
         title = page.get("title", "").lower()
         if query_lower == title:
-            score *= 1.8          # 完全一致：+80%
+            score *= 1.8
         elif query_lower in title:
-            score *= 1.4          # 部分一致：+40%
+            score *= 1.4
 
-        # 2. キーワードマッチボーナス
         keywords = page.get("keywords", [])
         if isinstance(keywords, str):
             keywords = keywords.split(",")
         keywords_lower = [k.strip().lower() for k in keywords]
         if query_lower in keywords_lower:
-            score *= 1.3          # キーワード一致：+30%
+            score *= 1.3
 
-        # 3. 新鮮度ボーナス（90日以内のページは最大 +20%）
         crawled_at = page.get("crawled_at", "")
         if crawled_at:
             try:
                 crawled = datetime.fromisoformat(crawled_at.replace("Z", "+00:00"))
-                days_old = (datetime.now() - crawled.replace(tzinfo=None)).days
+                now = datetime.utcnow()
+                days_old = (now - crawled).days
                 if days_old <= 90:
-                    recency_bonus = 1 + (0.2 * (90 - days_old) / 90)
-                    score *= recency_bonus
+                    score *= 1 + (0.2 * (90 - days_old) / 90)
             except Exception:
                 pass
 
         return score
 
 
-# ── シングルトン管理 ──────────────────────────────────────────
-
-# シングルトンインスタンス（モジュールレベルで保持する）
 _engine = None
 
 
 def get_engine() -> SearchEngine:
-    """検索エンジンのシングルトンを取得する"""
     global _engine
     if _engine is None:
         _engine = SearchEngine()
@@ -158,6 +104,5 @@ def get_engine() -> SearchEngine:
 
 
 def rebuild_index(pages: List[dict]):
-    """インデックスを再構築する（新しいページが追加されたときに呼び出す）"""
     engine = get_engine()
     engine.build_index(pages)
